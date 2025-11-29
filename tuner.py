@@ -1,3 +1,10 @@
+# ============================================
+# Code written by Hertmans Matheo - Preat Thomas - Vandermeulen Arnaud - Wu Jiale
+# For the course "Signaux 3" at EPHEC LLN
+#
+# ChatGPT assistance for code optimization and debugging
+# ============================================
+
 import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
@@ -31,7 +38,7 @@ def freq_to_string(freq):
     return name, STRINGS[name]
 
 # ============================================
-# Bandpass filter (anti noise)
+# Bandpass filter
 # ============================================
 
 def make_bandpass_sos(low_hz, high_hz, fs, order=5):
@@ -75,7 +82,7 @@ def draw_gauge(fig, diff_cents, string_name):
     fig.tight_layout()
 
 # ============================================
-# Frequency detection using autocorrelation
+# Autocorrelation detection
 # ============================================
 
 def detect_frequency_autocorr(x, fs):
@@ -83,7 +90,7 @@ def detect_frequency_autocorr(x, fs):
     corr = np.correlate(x, x, mode='full')
     corr = corr[len(corr)//2:]
     d = np.diff(corr)
-    start = np.where(d > 0)[0][0]  # éviter le pic à zéro
+    start = np.where(d > 0)[0][0]
     peak = np.argmax(corr[start:]) + start
     if peak == 0:
         return 0
@@ -94,29 +101,31 @@ def detect_frequency_autocorr(x, fs):
 # ============================================
 
 class LiveTuner:
-    def __init__(self, fig_gauge, canvas_gauge, fig_spectrum, canvas_spectrum, selected_device_name, device_dict, fs=44100, block_duration=0.12):
+    def __init__(self, fig_gauge, canvas_gauge, fig_spectrum, canvas_spectrum,
+                 selected_device_name, device_dict, fs=44100, block_duration=0.06):
+
         self.fs = fs
         self.block_duration = block_duration
         self.blocksize = int(self.fs * self.block_duration)
         self.q = queue.Queue()
         self.stream = None
         self.running = False
+
         self.fig_gauge = fig_gauge
         self.canvas_gauge = canvas_gauge
         self.fig_spectrum = fig_spectrum
         self.canvas_spectrum = canvas_spectrum
+
         self.selected_device_name = selected_device_name
         self.device_dict = device_dict
+
         self.last_note = None
         self.note_counter = 0
-        self.note_confirm_threshold = 3  # nombre de blocs consécutifs pour confirmer la note
+        self.note_confirm_threshold = 5
 
-
-        # Passe-bande plus ciblé pour guitare
         self.sos = make_bandpass_sos(40, 400, fs)
         self.zi = sosfilt_zi(self.sos)
 
-        # Historique pour moyenne glissante
         self.freq_history = []
 
     def audio_callback(self, indata, frames, time, status):
@@ -138,7 +147,7 @@ class LiveTuner:
             self.stream.start()
             self.running = True
         except Exception as e:
-            print("Audio error:", str(e))
+            print("Audio error:", e)
 
     def stop(self):
         if not self.running:
@@ -162,13 +171,14 @@ class LiveTuner:
         if last is not None:
             arr = np.squeeze(last)
             peak = np.max(np.abs(arr))
-            if peak < 0.02:  # seuil minimal réduit pour cordes graves
+
+            if peak < 0.02:
                 if self.running:
                     root.after(int(self.block_duration*500), self.poll)
                 return
 
-            arr = arr / peak  # normalisation
-            arr *= 2.0       # boost léger pour cordes graves
+            arr = arr / peak
+            arr *= 2.0
 
             try:
                 filtered, zf = sosfilt(self.sos, arr, zi=self.zi * arr[0])
@@ -177,7 +187,6 @@ class LiveTuner:
                 zf = sosfilt_zi(self.sos) * filtered[-1]
             self.zi = zf
 
-            # ----- Spectre -----
             N = len(filtered)
             fft_vals = np.abs(np.fft.rfft(filtered))
             fft_freqs = np.fft.rfftfreq(N, 1/self.fs)
@@ -192,11 +201,10 @@ class LiveTuner:
             self.fig_spectrum.tight_layout()
             self.canvas_spectrum.draw()
 
-            # ----- Jauge -----
             freq = detect_frequency_autocorr(filtered, self.fs)
+
             if freq > 0:
                 self.freq_history.append(freq)
-                # on ignore les 0 dans la moyenne
                 self.freq_history = [f for f in self.freq_history if f > 0]
                 if len(self.freq_history) > 5:
                     self.freq_history.pop(0)
@@ -206,7 +214,6 @@ class LiveTuner:
 
             string, target = freq_to_string(freq_smooth)
 
-            # Vérification de stabilité
             if string == self.last_note:
                 self.note_counter += 1
             else:
@@ -214,7 +221,6 @@ class LiveTuner:
                 self.last_note = string
 
             if self.note_counter >= self.note_confirm_threshold:
-                # On change l'affichage uniquement si la note est stable
                 diff = cents_diff(freq_smooth, target) if freq_smooth > 0 else 0
                 status_text.set(f"{string} : {freq_smooth:.2f} Hz ({diff:+.1f} c)")
                 draw_gauge(self.fig_gauge, diff, string)
@@ -230,12 +236,10 @@ class LiveTuner:
 root = tk.Tk()
 root.title("Guitar tuner + Spectrum")
 
-# Canevas jauge
 fig_gauge = plt.Figure(figsize=(6,3))
 canvas_gauge = FigureCanvasTkAgg(fig_gauge, master=root)
 canvas_gauge.get_tk_widget().pack()
 
-# Canevas spectre
 fig_spectrum = plt.Figure(figsize=(6,2))
 ax_spec = fig_spectrum.add_subplot(111)
 canvas_spectrum = FigureCanvasTkAgg(fig_spectrum, master=root)
@@ -243,18 +247,15 @@ canvas_spectrum.get_tk_widget().pack()
 
 status_text = tk.StringVar()
 status_text.set("No signal")
-label_status = tk.Label(root, textvariable=status_text)
-label_status.pack()
+tk.Label(root, textvariable=status_text).pack()
 
 frame_btn = tk.Frame(root)
 frame_btn.pack(pady=6)
 
-# ----------------------------
-# Liste des périphériques audio
-# ----------------------------
 input_devices = [d for d in sd.query_devices() if d['max_input_channels'] > 0]
 device_dict = {}
 device_names_unique = []
+
 for d in input_devices:
     name = d['name']
     if "primary" in name.lower() or "sound mapper" in name.lower():
@@ -266,12 +267,40 @@ for d in input_devices:
 selected_device_name = tk.StringVar()
 selected_device_name.set(device_names_unique[0] if device_names_unique else "No input")
 
-tk.Label(frame_btn, text="Select mic:").grid(row=0, column=0, sticky="w")
+tk.Label(frame_btn, text="Select mic:").grid(row=0, column=0)
 device_menu = tk.OptionMenu(frame_btn, selected_device_name, *device_names_unique)
 device_menu.grid(row=0, column=1, padx=6)
 
-# Live tuner
-live_tuner = LiveTuner(fig_gauge, canvas_gauge, fig_spectrum, canvas_spectrum, selected_device_name, device_dict)
+# Block duration field
+tk.Label(frame_btn, text="Block duration (s):").grid(row=1, column=0)
+entry_block = tk.Entry(frame_btn)
+entry_block.insert(0, "0.06")
+entry_block.grid(row=1, column=1, padx=6)
+
+# Threshold field
+tk.Label(frame_btn, text="Note threshold:").grid(row=2, column=0)
+entry_threshold = tk.Entry(frame_btn)
+entry_threshold.insert(0, "5")
+entry_threshold.grid(row=2, column=1, padx=6)
+
+def apply_settings():
+    try:
+        new_block = float(entry_block.get())
+        new_thresh = int(entry_threshold.get())
+
+        live_tuner.block_duration = new_block
+        live_tuner.blocksize = int(live_tuner.fs * new_block)
+        live_tuner.note_confirm_threshold = new_thresh
+
+        status_text.set(f"Updated settings")
+    except:
+        status_text.set("Invalid values")
+
+btn_apply = tk.Button(frame_btn, text="Apply", command=apply_settings)
+btn_apply.grid(row=3, column=0, columnspan=2, pady=5)
+
+live_tuner = LiveTuner(fig_gauge, canvas_gauge, fig_spectrum, canvas_spectrum,
+                       selected_device_name, device_dict)
 
 def toggle():
     if live_tuner.running:
@@ -280,12 +309,11 @@ def toggle():
         status_text.set("Mic stopped")
     else:
         live_tuner.start()
-        btn_live.config(text="Listening...")
         btn_live.config(text="Stop mic")
         root.after(1, live_tuner.poll)
 
 btn_live = tk.Button(frame_btn, text="Start mic", command=toggle)
-btn_live.grid(row=1, column=0, columnspan=2, pady=6)
+btn_live.grid(row=4, column=0, columnspan=2, pady=6)
 
 def on_close():
     live_tuner.stop()
@@ -293,4 +321,3 @@ def on_close():
 
 root.protocol("WM_DELETE_WINDOW", on_close)
 root.mainloop()
-
