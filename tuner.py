@@ -236,6 +236,9 @@ class LiveTuner:
 root = tk.Tk()
 root.title("Guitar tuner + Spectrum")
 
+title_label = tk.Label(root, text="L'Accordeur-inator 3000", font=("Helvetica", 28, "bold"))
+title_label.pack(pady=15)
+
 fig_gauge = plt.Figure(figsize=(6,3))
 canvas_gauge = FigureCanvasTkAgg(fig_gauge, master=root)
 canvas_gauge.get_tk_widget().pack()
@@ -321,3 +324,4 @@ def on_close():
 
 root.protocol("WM_DELETE_WINDOW", on_close)
 root.mainloop()
+
