@@ -34,7 +34,7 @@ def freq_to_string(freq):
 # Bandpass filter (anti noise)
 # ============================================
 
-def make_bandpass_sos(low_hz, high_hz, fs, order=4):
+def make_bandpass_sos(low_hz, high_hz, fs, order=5):
     nyq = 0.5 * fs
     low = np.clip(low_hz / nyq, 0.0001, 0.99)
     high = np.clip(high_hz / nyq, 0.0002, 0.999)
@@ -293,3 +293,4 @@ def on_close():
 
 root.protocol("WM_DELETE_WINDOW", on_close)
 root.mainloop()
+
